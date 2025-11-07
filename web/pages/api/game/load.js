@@ -1,10 +1,12 @@
 // web/pages/api/game/load.js
-const db = require('../../../lib/db');
+import db from '../../../lib/db.js';
 
-module.exports = (req, res) => {
-  const { userId } = req.query;
+export default async function handler(req, res) {
+  if (req.method !== 'GET') return res.status(405).json({ error: 'Method not allowed' });
+  const userId = req.query.userId;
   if (!userId) return res.status(400).json({ error: 'missing userId' });
   const user = db.findUserById(userId) || db.findUserByEmail(userId);
   if (!user) return res.status(404).json({ error: 'not found' });
-  return res.json({ cookies: user.cookies || 0, cps: user.cps || 0, upgrades: user.upgrades || [] });
-};
+  const { cookies = 0, cps = 0, upgrades = [] } = user;
+  return res.json({ cookies, cps, upgrades, verified: !!user.verified });
+}
