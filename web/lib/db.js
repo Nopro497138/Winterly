@@ -6,12 +6,12 @@ const DB_FILE = path.join(process.cwd(), 'data', 'users.json');
 function ensure() {
   const dir = path.dirname(DB_FILE);
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-  if (!fs.existsSync(DB_FILE)) fs.writeFileSync(DB_FILE, JSON.stringify({ users: [], sessions: [] }));
+  if (!fs.existsSync(DB_FILE)) fs.writeFileSync(DB_FILE, JSON.stringify({ users: [] }, null, 2));
 }
 
 function read() {
   ensure();
-  return JSON.parse(fs.readFileSync(DB_FILE));
+  return JSON.parse(fs.readFileSync(DB_FILE, 'utf8'));
 }
 
 function write(data) {
@@ -19,7 +19,7 @@ function write(data) {
 }
 
 module.exports = {
-  getUsers() { const d = read(); return d.users; },
+  getUsers() { return read().users; },
   saveUsers(users) { const d = read(); d.users = users; write(d); },
   findUserByEmail(email) { return this.getUsers().find(u => u.email === email); },
   findUserById(id) { return this.getUsers().find(u => u.id === id); },
@@ -30,7 +30,7 @@ module.exports = {
     return user;
   },
   updateUser(id, patch) {
-    const users = this.getUsers().map(u => u.id === id ? { ...u, ...patch } : u);
+    const users = this.getUsers().map(u => (u.id === id ? { ...u, ...patch } : u));
     this.saveUsers(users);
     return users.find(u => u.id === id);
   }
