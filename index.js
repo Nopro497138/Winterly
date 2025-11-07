@@ -1,13 +1,20 @@
 // bot/index.js
 require('dotenv').config();
-const { Client, GatewayIntentBits, EmbedBuilder } = require('discord.js');
+const { Client, GatewayIntentBits, REST, Routes, EmbedBuilder } = require('discord.js');
 
 const TOKEN = process.env.DISCORD_TOKEN;
 const GUILD_ID = process.env.GUILD_ID;
+const CLIENT_ID = process.env.CLIENT_ID; // your app client id
 const WEBHOOK_SECRET = process.env.WEBHOOK_SECRET;
-const BASE_URL = (process.env.BASE_URL || '').replace(/\/$/, '');
+const BASE_URL = process.env.BASE_URL; // website URL
+const BOT_WEBHOOK_PATH = process.env.BOT_WEBHOOK_PATH || '/bot/webhook'; // optional
 
-const client = new Client({ intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMembers] });
+if (!TOKEN) {
+  console.error('DISCORD_TOKEN missing in env');
+  process.exit(1);
+}
+
+const client = new Client({ intents: [GatewayIntentBits.Guilds] });
 
 const commands = [
   {
@@ -21,46 +28,59 @@ const commands = [
   }
 ];
 
-client.once('ready', async () => {
-  console.log(`Bot ready: ${client.user.tag}`);
-  // register guild commands (so they appear quickly)
+async function registerCommands() {
+  const rest = new REST({ version: '10' }).setToken(TOKEN);
   try {
-    const guild = await client.guilds.fetch(GUILD_ID);
-    await guild.commands.set(commands);
-    console.log('Slash commands registered in guild:', GUILD_ID);
-  } catch (err) {
-    console.error('Command registration error', err);
+    console.log('Registering guild commands...');
+    const appId = CLIENT_ID || client.application?.id;
+    if (!appId) throw new Error('CLIENT_ID not set and client.application.id missing');
+    await rest.put(Routes.applicationGuildCommands(appId, GUILD_ID), { body: commands });
+    console.log('Commands registered.');
+  } catch (e) {
+    console.error('Failed to register commands', e);
   }
+}
+
+client.once('ready', async () => {
+  console.log(`Logged in as ${client.user.tag}`);
+  // register commands
+  await registerCommands();
 });
 
 client.on('interactionCreate', async interaction => {
   if (!interaction.isChatInputCommand()) return;
-  if (interaction.commandName === 'verify') {
+  const name = interaction.commandName;
+  if (name === 'verify') {
     const code = interaction.options.getString('code');
+    // call website to complete verification
     try {
       const resp = await fetch(`${BASE_URL}/api/discord/complete-verify`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'x-webhook-secret': WEBHOOK_SECRET },
         body: JSON.stringify({ code, discordId: interaction.user.id })
       });
-      const data = await resp.json();
-      if (data.ok) {
-        const embed = new EmbedBuilder().setTitle('✅ Account linked').setDescription(`Your Discord account <@${interaction.user.id}> is now linked.`).setColor(0x1F8B4C);
+      const data = await resp.json().catch(()=>null);
+      if (resp.ok && data?.ok) {
+        const embed = new EmbedBuilder().setTitle('✅ Account linked').setDescription(`Linked <@${interaction.user.id}>`).setColor(0x1F8B4C).setTimestamp();
         await interaction.reply({ embeds: [embed], ephemeral: true });
       } else {
-        const embed = new EmbedBuilder().setTitle('❌ Link failed').setDescription(`Could not link: ${data.error || JSON.stringify(data)}`).setColor(0xD93025);
+        const embed = new EmbedBuilder().setTitle('❌ Link failed').setDescription('Could not link your account. Check the code or contact support.').setColor(0xD93025).setTimestamp();
         await interaction.reply({ embeds: [embed], ephemeral: true });
       }
-    } catch (err) {
-      console.error('verify error', err);
-      await interaction.reply({ content: 'An error occurred while verifying. Try again later.', ephemeral: true });
+    } catch (e) {
+      console.error('verify call failed', e);
+      await interaction.reply({ content: 'Internal error while verifying.', ephemeral: true });
     }
-  } else if (interaction.commandName === 'info') {
+  } else if (name === 'info') {
     const embed = new EmbedBuilder()
       .setTitle('Winter Cookie — Website Info')
-      .setDescription('Play the Winter Cookie clicker game and link your account via Email verification or Discord ID.')
-      .addFields({ name: 'Website', value: BASE_URL || 'not configured', inline: false })
-      .setColor(0x00A3E0);
+      .setDescription('Play the Winter Cookie clicker. Link via Email verification or Discord ID.')
+      .addFields(
+        { name: 'Website', value: BASE_URL || 'not configured', inline: false },
+        { name: 'How to link', value: 'Register on site -> receive code -> use /verify CODE here.', inline: false }
+      )
+      .setColor(0x00A3E0)
+      .setTimestamp();
     await interaction.reply({ embeds: [embed], ephemeral: true });
   }
 });
