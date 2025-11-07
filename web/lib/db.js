@@ -1,6 +1,6 @@
 // web/lib/db.js
-const fs = require('fs');
-const path = require('path');
+import fs from 'fs';
+import path from 'path';
 const DB_FILE = path.join(process.cwd(), 'data', 'users.json');
 
 function ensure() {
@@ -15,23 +15,43 @@ function read() {
 }
 
 function write(data) {
+  ensure();
   fs.writeFileSync(DB_FILE, JSON.stringify(data, null, 2));
 }
 
-module.exports = {
-  getUsers() { return read().users; },
-  saveUsers(users) { const d = read(); d.users = users; write(d); },
-  findUserByEmail(email) { return this.getUsers().find(u => u.email === email); },
-  findUserById(id) { return this.getUsers().find(u => u.id === id); },
-  addUser(user) {
-    const users = this.getUsers();
-    users.push(user);
-    this.saveUsers(users);
-    return user;
-  },
-  updateUser(id, patch) {
-    const users = this.getUsers().map(u => (u.id === id ? { ...u, ...patch } : u));
-    this.saveUsers(users);
-    return users.find(u => u.id === id);
-  }
+function getUsers() {
+  return read().users || [];
+}
+function saveUsers(users) {
+  const d = read();
+  d.users = users;
+  write(d);
+}
+function findUserByEmail(email) {
+  if (!email) return null;
+  return getUsers().find(u => u.email && u.email.toLowerCase() === email.toLowerCase());
+}
+function findUserById(id) {
+  if (!id) return null;
+  return getUsers().find(u => u.id === id);
+}
+function addUser(user) {
+  const users = getUsers();
+  users.push(user);
+  saveUsers(users);
+  return user;
+}
+function updateUser(id, patch = {}) {
+  const users = getUsers().map(u => u.id === id ? { ...u, ...patch } : u);
+  saveUsers(users);
+  return users.find(u => u.id === id);
+}
+
+export default {
+  getUsers,
+  saveUsers,
+  findUserByEmail,
+  findUserById,
+  addUser,
+  updateUser
 };
